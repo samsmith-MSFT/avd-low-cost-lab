@@ -398,9 +398,6 @@ module sessionHost 'br/public:avm/res/compute/virtual-machine:0.22.2' = {
       status: 'Enabled'
       dailyRecurrenceTime: shutdownTime
       timeZone: shutdownTimeZone
-      notificationSettings: {
-        status: 'Disabled'
-      }
     }
     roleAssignments: [
       {
