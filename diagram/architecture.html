@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AVD Lab — Architecture</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : true;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #FAF9F5; --surface: #FFFFFF; --surface2: #F0EEE6;
+    --ink: #141413; --body: #3D3D3A; --muted: #87867F;
+    --line: #D1CFC5; --line-soft: #E6E3DA;
+    --clay: #D97757; --clay-soft: rgba(217,119,87,0.10);
+    --olive: #788C5D; --olive-soft: rgba(120,140,93,0.12);
+    --gold: #C9A45C; --blue: #5B7E96;
+    --go: #4F8A4F; --stop: #B85450;
+    --flow: var(--blue);
+    --zone: rgba(20,20,19,0.025); --zone-line: #D1CFC5;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg: #141413; --surface: #1F1F1D; --surface2: #2A2A28;
+    --ink: #FAF9F5; --body: #D1CFC5; --muted: #87867F;
+    --line: #3D3D3A; --line-soft: #2A2A28;
+    --clay: #E48A6E; --clay-soft: rgba(228,138,110,0.14);
+    --olive: #9DB07C; --olive-soft: rgba(157,176,124,0.16);
+    --gold: #D4B36F; --blue: #7FA3BC;
+    --go: #6FAE6F; --stop: #D17570;
+    --flow: var(--blue);
+    --zone: rgba(250,249,245,0.03); --zone-line: #3D3D3A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--body); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 20px; border-bottom: 1px solid var(--line-soft); flex: none;
+  }
+  .bar h1 { font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--ink); letter-spacing: -0.01em; }
+  .bar .sub { font-family: var(--mono); font-size: 10.5px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: all .15s ease;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  #themeToggle {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer;
+  }
+  #themeToggle:hover { color: var(--ink); border-color: var(--muted); }
+
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .zone rect { fill: var(--zone); stroke: var(--zone-line); stroke-width: 1; stroke-dasharray: 5 5; rx: 16; }
+  .zone .ztitle { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+  .zone .zsub { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); opacity: 0.75; }
+
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; rx: 10; transition: stroke .15s ease, filter .15s ease; }
+  .node:hover rect { stroke: var(--muted); }
+  .node.sel rect { stroke: var(--clay) !important; stroke-width: 2; }
+  .node .t  { font-family: var(--sans); font-size: 14.5px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+  .node .m  { font-family: var(--mono); font-size: 11px; fill: var(--muted); pointer-events: none; }
+  .node .k  { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; fill: var(--clay); pointer-events: none; }
+  .node.gate rect { fill: var(--clay-soft); stroke: var(--clay); }
+  .node.store rect { fill: var(--surface2); }
+  .node.do rect { fill: var(--olive-soft); stroke: var(--olive); }
+  .node.ext rect { stroke-dasharray: 6 3; }
+
+  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; marker-end: url(#a-flow); opacity: 0; transition: opacity .25s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray: 5 4; }
+  .elbl { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); opacity: 0; transition: opacity .25s ease; }
+
+  .stage.flowing .node { opacity: 0.30; }
+  .stage.flowing .zone { opacity: 0.55; }
+  .stage.flowing .edge.lit {
+    opacity: 1; stroke: var(--flow); marker-end: url(#a-flow);
+    stroke-dasharray: 7 5; animation: march 0.9s linear infinite;
+  }
+  .stage.flowing .elbl.lit { opacity: 1; fill: var(--flow); }
+  .stage.flowing .node.lit { opacity: 1; }
+  .stage.flowing .node.lit rect { stroke: var(--flow); }
+  .stage.flowing.tone-go { --flow: var(--go); }
+  .stage.flowing.tone-stop { --flow: var(--stop); }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation: none; } }
+
+  .card {
+    position: absolute; max-width: 360px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+  }
+  #detail { right: 16px; top: 16px; width: 340px; }
+  #detail h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink); margin-bottom: 2px; }
+  #detail .meta { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-bottom: 8px; }
+  #detail p { font-size: 12.5px; line-height: 1.55; }
+  #detail p code, #flowcap code { font-family: var(--mono); font-size: 11px; color: var(--clay); }
+  #flowcap { left: 16px; bottom: 16px; max-width: 480px; display: none; }
+  #flowcap.show { display: block; }
+  #flowcap .fname { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--flow,var(--blue)); margin-bottom: 6px; }
+  #flowcap ol { margin-left: 18px; }
+  #flowcap li { font-size: 12.5px; line-height: 1.55; }
+  .src { position: absolute; bottom: 10px; right: 16px; font-family: var(--mono); font-size: 10px; color: var(--muted); opacity: 0.8; }
+  @media (max-width: 880px) {
+    body { overflow: auto; }
+    .stage { min-height: 70vh; }
+    #detail { position: static; width: auto; margin: 10px 16px; }
+    #flowcap { position: static; margin: 0 16px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <h1>Azure Virtual Desktop — Low-Cost Lab</h1>
+    <div class="sub">single host pool · entra-joined · fslogix on premium files · westcentralus</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-flow="all">All</button>
+    <button class="chip" data-flow="signin">Sign in</button>
+    <button class="chip" data-flow="rdp">RDP connect</button>
+    <button class="chip" data-flow="fslogix">FSLogix profile</button>
+    <button class="chip" data-flow="telemetry">Telemetry</button>
+  </div>
+  <button id="themeToggle">Theme</button>
+</div>
+
+<div class="stage" id="stage">
+<svg viewBox="0 0 1620 920" preserveAspectRatio="xMidYMid meet" role="img" aria-label="AVD lab architecture">
+  <defs>
+    <marker id="a-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--flow)"/>
+    </marker>
+  </defs>
+
+  <g class="zone" id="z-user">
+    <rect x="40" y="120" width="240" height="380"/>
+    <text class="ztitle" x="60" y="148">End user + client</text>
+    <text class="zsub" x="60" y="166">internet · TCP 443 outbound only</text>
+  </g>
+  <g class="zone" id="z-entra">
+    <rect x="40" y="540" width="240" height="320"/>
+    <text class="ztitle" x="60" y="568">Microsoft Entra ID</text>
+    <text class="zsub" x="60" y="586">tenant · identity + KDC</text>
+  </g>
+
+  <g class="zone" id="z-avdcp">
+    <rect x="320" y="120" width="300" height="740"/>
+    <text class="ztitle" x="340" y="148">AVD control plane</text>
+    <text class="zsub" x="340" y="166">microsoft.desktopvirtualization · global</text>
+  </g>
+
+  <g class="zone" id="z-sub">
+    <rect x="660" y="120" width="940" height="740"/>
+    <text class="ztitle" x="680" y="148">Customer subscription · rg-avd-lab · westcentralus</text>
+  </g>
+  <g class="zone" id="z-vnet">
+    <rect x="690" y="180" width="560" height="420"/>
+    <text class="ztitle" x="710" y="208">vnet-avd-lab</text>
+    <text class="zsub" x="710" y="226">10.50.0.0/16</text>
+  </g>
+  <g class="zone" id="z-snet">
+    <rect x="710" y="240" width="520" height="350"/>
+    <text class="ztitle" x="730" y="268">snet-sessionhosts · 10.50.1.0/24</text>
+    <text class="zsub" x="730" y="286">nsg-avd-snet-sh · deny-all-inbound · avd reverse-connect</text>
+  </g>
+  <g class="zone" id="z-storage">
+    <rect x="1280" y="180" width="300" height="420"/>
+    <text class="ztitle" x="1300" y="208">Storage account</text>
+    <text class="zsub" x="1300" y="226">filestorage · premium_lrs · aadkerb</text>
+  </g>
+  <g class="zone" id="z-mon">
+    <rect x="690" y="640" width="890" height="200"/>
+    <text class="ztitle" x="710" y="668">Monitoring + lifecycle</text>
+  </g>
+
+  <path class="edge" id="e-user-client" d="M160,250 L160,300"/>
+  <path class="edge" id="e-client-entra" d="M120,440 C 100,510 100,560 120,610"/>
+  <path class="edge" id="e-client-workspace" d="M250,375 C 290,360 310,250 355,240"/>
+  <path class="edge" id="e-workspace-appgroup" d="M455,330 L455,375"/>
+
+  <path class="edge" id="e-client-hostpool" d="M250,400 C 290,420 310,500 355,520"/>
+  <path class="edge" id="e-hostpool-sessionhost" d="M555,560 C 640,560 680,420 770,400"/>
+
+  <path class="edge" id="e-sh-entra" d="M770,440 C 480,500 280,640 240,690"/>
+  <path class="edge" id="e-sh-storage" d="M1110,400 C 1180,400 1250,330 1310,320"/>
+  <path class="edge" id="e-storage-share" d="M1430,395 L1430,445"/>
+
+  <path class="edge dash" id="e-hp-law" d="M555,605 C 600,640 700,690 850,720"/>
+  <path class="edge dash" id="e-ag-law" d="M555,420 C 590,640 720,700 855,725"/>
+  <path class="edge dash" id="e-ws-law" d="M555,280 C 580,650 720,710 855,730"/>
+  <path class="edge dash" id="e-sh-law" d="M870,500 C 870,640 870,690 870,710"/>
+  <path class="edge dash" id="e-storage-law" d="M1310,520 C 1180,600 1000,680 990,720"/>
+
+  <text class="elbl" data-e="e-client-entra" x="60" y="525">OAuth</text>
+  <text class="elbl" data-e="e-sh-storage" x="1195" y="348">SMB</text>
+
+  <g class="node" data-k="user">
+    <rect x="70" y="180" width="180" height="70"/>
+    <text class="t" x="90" y="210">End user</text>
+    <text class="m" x="90" y="232">your tenant</text>
+  </g>
+  <g class="node" data-k="client">
+    <rect x="70" y="300" width="180" height="140"/>
+    <text class="t" x="90" y="330">AVD client</text>
+    <text class="m" x="90" y="352">windows · macOS</text>
+    <text class="m" x="90" y="370">iOS · android · web</text>
+    <text class="k" x="90" y="396">client.wvd.microsoft.com</text>
+    <text class="m" x="90" y="418">no inbound · 443 out</text>
+  </g>
+
+  <g class="node ext" data-k="entra">
+    <rect x="70" y="600" width="180" height="120"/>
+    <text class="t" x="90" y="630">Entra ID tenant</text>
+    <text class="m" x="90" y="652">login.microsoftonline</text>
+    <text class="m" x="90" y="670">tokens + AAD KDC</text>
+    <text class="k" x="90" y="696">cloud-only kerberos</text>
+  </g>
+  <g class="node" data-k="usersgrp">
+    <rect x="70" y="740" width="180" height="100"/>
+    <text class="t" x="90" y="770">AVD-Lab-Users</text>
+    <text class="m" x="90" y="792">Entra security group</text>
+    <text class="m" x="90" y="810">manual pre-step</text>
+    <text class="k" x="90" y="830">RBAC subject</text>
+  </g>
+
+  <g class="node" data-k="workspace">
+    <rect x="355" y="200" width="230" height="100"/>
+    <text class="t" x="375" y="230">ws-avd-lab</text>
+    <text class="m" x="375" y="252">AVD Workspace</text>
+    <text class="m" x="375" y="270">friendly: AVD Lab Workspace</text>
+    <text class="k" x="375" y="290">registers app group</text>
+  </g>
+  <g class="node gate" data-k="appgroup">
+    <rect x="355" y="375" width="230" height="110"/>
+    <text class="t" x="375" y="405">ag-avd-lab-desktop</text>
+    <text class="m" x="375" y="427">Desktop application group</text>
+    <text class="k" x="375" y="447">RBAC: Desktop Virt User</text>
+    <text class="m" x="375" y="467">→ AVD-Lab-Users</text>
+  </g>
+  <g class="node gate" data-k="hostpool">
+    <rect x="345" y="510" width="250" height="140"/>
+    <text class="t" x="365" y="540">hp-avd-lab</text>
+    <text class="m" x="365" y="562">Pooled · BreadthFirst · max 10</text>
+    <text class="m" x="365" y="580">enablerdsaadauth:i:1</text>
+    <text class="m" x="365" y="598">targetisaadjoined:i:1</text>
+    <text class="k" x="365" y="624">reverse-connect broker</text>
+  </g>
+
+  <g class="node do" data-k="sessionhost">
+    <rect x="770" y="320" width="340" height="240"/>
+    <text class="t" x="790" y="350">avdsh-01</text>
+    <text class="m" x="790" y="372">Standard_D2s_v5 · Win11 24H2 multi-session</text>
+    <text class="m" x="790" y="390">Entra ID-join · StandardSSD_LRS 128 GiB</text>
+    <text class="k" x="790" y="416">extensions</text>
+    <text class="m" x="790" y="438">· AADLoginForWindows</text>
+    <text class="m" x="790" y="456">· AVDAgent + AVDBootloader (DSC)</text>
+    <text class="m" x="790" y="474">· CustomScript: FSLogix + cloud Kerberos</text>
+    <text class="k" x="790" y="502">DevTestLab schedule</text>
+    <text class="m" x="790" y="524">shutdown 18:00 CT nightly · no auto-start</text>
+    <text class="m" x="790" y="546">VM User Login → AVD-Lab-Users</text>
+  </g>
+
+  <g class="node store" data-k="storage">
+    <rect x="1300" y="240" width="260" height="160"/>
+    <text class="t" x="1320" y="270">stavdlab&lt;rand&gt;</text>
+    <text class="m" x="1320" y="292">FileStorage · Premium_LRS</text>
+    <text class="m" x="1320" y="310">AADKERB enabled</text>
+    <text class="k" x="1320" y="336">tenant domain · GUID</text>
+    <text class="m" x="1320" y="358">tags: kdc_enable_cloud_group_sids</text>
+    <text class="m" x="1320" y="376">MFA-excluded app reg</text>
+  </g>
+  <g class="node store" data-k="fileshare">
+    <rect x="1300" y="420" width="260" height="160"/>
+    <text class="t" x="1320" y="450">fslogix-profiles</text>
+    <text class="m" x="1320" y="472">Premium SMB · 100 GiB</text>
+    <text class="m" x="1320" y="490">FSLogix VHDX containers</text>
+    <text class="k" x="1320" y="516">share RBAC</text>
+    <text class="m" x="1320" y="538">SMB Share Contributor</text>
+    <text class="m" x="1320" y="556">→ AVD-Lab-Users</text>
+  </g>
+
+  <g class="node store" data-k="law">
+    <rect x="850" y="690" width="250" height="120"/>
+    <text class="t" x="870" y="720">law-avd-lab</text>
+    <text class="m" x="870" y="742">Log Analytics workspace</text>
+    <text class="m" x="870" y="760">PerGB2018 · 30-day retention</text>
+    <text class="k" x="870" y="786">AVD Insights compatible</text>
+  </g>
+  <g class="node" data-k="diag">
+    <rect x="1150" y="690" width="250" height="120"/>
+    <text class="t" x="1170" y="720">Diagnostic settings</text>
+    <text class="m" x="1170" y="742">host pool · app group · workspace</text>
+    <text class="m" x="1170" y="760">storage · file svc · NSG</text>
+    <text class="k" x="1170" y="786">categoryGroup: allLogs</text>
+  </g>
+
+</svg>
+
+  <div class="src">avd-lab-20260618 · westcentralus · spike</div>
+
+  <div class="card" id="flowcap">
+    <div class="fname" id="f-name"></div>
+    <ol id="f-steps"></ol>
+  </div>
+
+  <div class="card" id="detail">
+    <h3 id="d-title">Click anything</h3>
+    <div class="meta" id="d-meta">node detail</div>
+    <p id="d-body">Every box is clickable for detail. The chips above light up real request paths: Sign in (Entra to workspace feed), RDP connect (reverse-connect over 443), FSLogix profile (AAD Kerberos to SMB), and Telemetry (diagnostic flow to Log Analytics).</p>
+  </div>
+</div>
+
+<script>
+const DETAIL = {
+  user:        { t:"End user",            m:"identity · your tenant",                b:"A named Entra user in your tenant. Must be a member of the <b>AVD-Lab-Users</b> Entra security group; Bicep can't create Entra objects, so the group and membership are manual pre-steps." },
+  client:      { t:"AVD client",          m:"client.wvd.microsoft.com",              b:"The Windows desktop, macOS, iOS/Android, or web client. No inbound ports: the client always opens TCP 443 outbound to the AVD gateway, which then reverse-connects back into the session host." },
+  entra:       { t:"Microsoft Entra ID tenant", m:"login.microsoftonline.com",       b:"Two roles: identity provider for the AVD sign-in OAuth dance, and Kerberos KDC for FSLogix. Cloud-only AAD Kerberos requires the storage account's auto-created app registration to have <code>kdc_enable_cloud_group_sids</code> in its manifest tags and be excluded from any MFA Conditional Access policy." },
+  usersgrp:    { t:"AVD-Lab-Users",       m:"entra security group · manual",         b:"Single principal for every RBAC grant the lab makes: <b>Desktop Virtualization User</b> on the application group, <b>SMB Share Contributor</b> on the storage account, <b>Virtual Machine User Login</b> on the session host. Pre-created via <code>az ad group create</code>; objectId is a deploy-time parameter." },
+  workspace:   { t:"ws-avd-lab",          m:"Microsoft.DesktopVirtualization/workspaces", b:"The end-user-facing container. Registers the application group; the AVD client's feed discovery returns its workspace metadata so the desktop tile shows up." },
+  appgroup:    { t:"ag-avd-lab-desktop",  m:"applicationGroups · type=Desktop",      b:"Holds the desktop publication. Carries the <code>Desktop Virtualization User</code> role assignment for AVD-Lab-Users; without that grant, users authenticate but see no desktop in their feed." },
+  hostpool:    { t:"hp-avd-lab",          m:"hostPools · Pooled · BreadthFirst",     b:"Acts as the broker. <code>enablerdsaadauth:i:1</code> + <code>targetisaadjoined:i:1</code> in customRdpProperty are mandatory for Entra-joined hosts and non-Entra-joined clients. <code>maxSessionLimit=10</code>; one session host registered today, room to grow. <code>managementType: Standard</code> emits a registration token used by the VM extension." },
+  sessionhost: { t:"avdsh-01",            m:"compute/virtualMachines · D2s_v5",      b:"Single session host. Five extensions wired in by the AVM VM module: AAD join, AVD agent + bootloader (registers to host pool via DSC), and a CustomScript that writes FSLogix + cloud-Kerberos registry keys at first boot. Auto-shutdown at 18:00 Central via DevTestLab schedule keeps cost in the ~$25-35 band; no auto-start, restart the VM from the portal when you need it." },
+  storage:     { t:"Storage account (Premium Files)", m:"FileStorage · Premium_LRS · AADKERB", b:"<b>Premium tier is non-negotiable here</b>: westcentralus is the only US region that supports per-group RBAC for cloud-only AAD Kerberos on Azure Files, and only on Premium. Identity-based auth set to <code>AADKERB</code> with the tenant domain + GUID. The storage account's auto-generated Entra app must be excluded from MFA CA policy or AADKERB mounts fail with error 1327." },
+  fileshare:   { t:"fslogix-profiles",    m:"SMB share · 100 GiB · Premium",         b:"FSLogix profile container target. 100 GiB is the Premium provisioned minimum. Mounted by the session host as <code>\\\\stavdlab&lt;rand&gt;.file.core.windows.net\\fslogix-profiles</code>; user VHDX files appear on first logon. <b>SMB Share Contributor</b> grant to AVD-Lab-Users gives read/write to all profiles." },
+  law:         { t:"law-avd-lab",         m:"OperationalInsights/workspaces",        b:"Single sink for every diagnostic setting in the deployment. First 5 GiB/month is free; a single-host lab almost certainly stays under that. AVD Insights at <code>aka.ms/avdi</code> renders dashboards directly off these tables." },
+  diag:        { t:"Diagnostic settings", m:"per-resource · to Log Analytics",       b:"Six diagnostic settings, all writing to law-avd-lab with <code>categoryGroup: allLogs</code>: host pool, application group, workspace, storage account, file service, and the NSG. The VM itself does not emit platform diagnostics in this build (intentional, to keep LAW ingest small); add Azure Monitor Agent later if perf counters are needed." }
+};
+
+const FLOWS = {
+  signin: {
+    tone: "go",
+    name: "Sign in — feed discovery",
+    edges: ["e-user-client","e-client-entra","e-client-workspace","e-workspace-appgroup"],
+    nodes: ["user","client","entra","usersgrp","workspace","appgroup"],
+    steps: [
+      "User opens the AVD client and signs in against your Entra tenant",
+      "Client receives a token and calls AVD feed discovery against <code>ws-avd-lab</code>",
+      "Workspace returns the registered desktop application group; user sees the desktop tile only because AVD-Lab-Users has <b>Desktop Virtualization User</b> on <code>ag-avd-lab-desktop</code>"
+    ]
+  },
+  rdp: {
+    tone: "go",
+    name: "RDP connect — reverse-connect via host pool",
+    edges: ["e-user-client","e-client-hostpool","e-hostpool-sessionhost"],
+    nodes: ["user","client","hostpool","sessionhost"],
+    steps: [
+      "Client opens TCP 443 outbound to the AVD gateway and asks the host pool broker for an available session host",
+      "Host pool broker selects <code>avdsh-01</code> (only one in pool) and signals the session host to reverse-connect back to the gateway",
+      "The two halves rendezvous at the gateway; no inbound NSG rule needed on snet-sessionhosts"
+    ]
+  },
+  fslogix: {
+    tone: "go",
+    name: "FSLogix profile — load via AAD Kerberos",
+    edges: ["e-sh-entra","e-sh-storage","e-storage-share"],
+    nodes: ["sessionhost","entra","storage","fileshare","usersgrp"],
+    steps: [
+      "User signs in to Windows; <code>CloudKerberosTicketRetrievalEnabled=1</code> tells LSA to ask Entra for a Kerberos TGT",
+      "Session host presents the TGT over SMB 3.x (TCP 445) to the storage account; AADKERB validates and returns access",
+      "FSLogix mounts the user's VHDX from <code>\\\\stavdlab&lt;rand&gt;.file.core.windows.net\\fslogix-profiles</code> as the user profile"
+    ]
+  },
+  telemetry: {
+    tone: "go",
+    name: "Telemetry — diagnostics to Log Analytics",
+    edges: ["e-hp-law","e-ag-law","e-ws-law","e-sh-law","e-storage-law"],
+    nodes: ["hostpool","appgroup","workspace","sessionhost","storage","law","diag"],
+    steps: [
+      "Each AVD control-plane resource (host pool, app group, workspace), the session host, and the storage account write diagnostic logs to <code>law-avd-lab</code> via per-resource diagnostic settings (<code>categoryGroup: allLogs</code>)",
+      "Open AVD Insights at <code>aka.ms/avdi</code> and point it at <code>law-avd-lab</code> for a free dashboard",
+      "First 5 GiB/month of LAW ingest is free; a single-host lab is well under that"
+    ]
+  }
+};
+
+const stage = document.getElementById('stage');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('.chip');
+const fcap = document.getElementById('flowcap');
+
+function setFlow(key) {
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit'));
+  elbls.forEach(l => l.classList.remove('lit'));
+  nodes.forEach(n => n.classList.remove('lit'));
+  stage.classList.remove('tone-go','tone-stop');
+  if (key === 'all') { stage.classList.remove('flowing'); fcap.classList.remove('show'); return; }
+  const f = FLOWS[key];
+  stage.classList.add('flowing');
+  if (f.tone) stage.classList.add('tone-' + f.tone);
+  f.edges.forEach(id => document.getElementById(id)?.classList.add('lit'));
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) l.classList.add('lit'); });
+  f.nodes.forEach(k => document.querySelector(`.node[data-k="${k}"]`)?.classList.add('lit'));
+  document.getElementById('f-name').textContent = f.name;
+  document.getElementById('f-steps').innerHTML = f.steps.map(s => `<li>${s}</li>`).join('');
+  fcap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+nodes.forEach(n => n.addEventListener('click', () => {
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  document.getElementById('d-body').innerHTML = d.b;
+}));
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const dark = !document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+});
+</script>
+</body>
+</html>
