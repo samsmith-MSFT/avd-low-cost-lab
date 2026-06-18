@@ -47,7 +47,7 @@ param fileShareName string = 'fslogix-profiles'
 param sessionHostName string = 'avdsh-01'
 
 @description('Session host VM size.')
-param vmSize string = 'Standard_D2s_v5'
+param vmSize string = 'Standard_D8s_v5'
 
 @description('Object ID of the pre-existing Entra security group for AVD users.')
 param avdUsersGroupObjectId string

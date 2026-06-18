@@ -189,7 +189,7 @@ The script is idempotent; re-running is safe.
 | `storageAccountName` | None | Yes | 3-24 lowercase alphanumeric characters, globally unique. Supplied by `STORAGE_ACCOUNT_NAME`. |
 | `fileShareName` | `fslogix-profiles` | No | FSLogix Azure Files share. |
 | `sessionHostName` | `avdsh-01` | No | Windows VM name, 15 characters or fewer. |
-| `vmSize` | `Standard_D2s_v5` | No | Session host VM size. |
+| `vmSize` | `Standard_D8s_v5` | No | Session host VM size. Override at deploy time for cheaper or beefier hosts. |
 | `avdUsersGroupObjectId` | None | Yes | Object ID of the `AVD-Lab-Users` security group. Supplied by `AVD_USERS_GROUP_OBJECT_ID`. |
 | `deployerObjectId` | Current Azure CLI user | No | Used for Azure Files elevated SMB contributor access. Override with `DEPLOYER_OBJECT_ID`. |
 | `aadTenantDomain` | None | Yes | Primary Entra tenant domain. Supplied by `AAD_TENANT_DOMAIN`. |
@@ -313,9 +313,10 @@ The storage account's Entra Kerberos app registration is tenant-scoped and can s
 
 | SKU | vCPU / RAM | $/hr (Win, westcentralus) | Best for |
 |---|---|---|---|
-| `Standard_D2s_v5` *(default)* | 2 / 8 GiB | ~$0.21 | Connection-test, "is this thing on" |
-| `Standard_E2s_v5` | 2 / 16 GiB | ~$0.25 | Single user, browser + Teams |
-| `Standard_D4s_v5` | 4 / 16 GiB | ~$0.41 | Real desktop perf for one user |
+| `Standard_D2s_v5` | 2 / 8 GiB | ~$0.21 | Connection-test, "is this thing on" — too small for real work |
+| `Standard_E2s_v5` | 2 / 16 GiB | ~$0.25 | Memory-bound single user (browser + Teams) on a budget |
+| `Standard_D4s_v5` | 4 / 16 GiB | ~$0.41 | Comfortable single-user desktop |
+| `Standard_D8s_v5` *(default)* | 8 / 32 GiB | ~$0.83 (or ~$0.46 with M365/Win E3+E5 license credit) | Real performance, multi-user-ready |
 
 Override with `vmSize` in the bicepparam or as a CLI parameter. Bigger numbers cost more — the cost table above assumes the same auto-shutdown profile.
 

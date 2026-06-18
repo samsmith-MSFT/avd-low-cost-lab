@@ -23,7 +23,7 @@ param appGroupName              = 'ag-avd-lab-desktop'
 param workspaceName             = 'ws-avd-lab'
 param fileShareName             = 'fslogix-profiles'
 param sessionHostName           = 'avdsh-01'
-param vmSize                    = 'Standard_D2s_v5'
+param vmSize                    = 'Standard_D8s_v5'
 
 // ---- Auto-shutdown ---------------------------------------------------------
 param shutdownTime              = '1800'                  // 6:00 PM
@@ -34,11 +34,11 @@ param adminUsername             = 'avdadmin'
 param adminPassword             = ''                       // SUPPLY ON CLI
 
 // ---- Identity / auth (SUPPLY ALL ON CLI) -----------------------------------
-param storageAccountName        = ''                       // SUPPLY ON CLI
-param avdUsersGroupObjectId     = ''                       // SUPPLY ON CLI
-param deployerObjectId          = ''                       // SUPPLY ON CLI
-param aadTenantDomain           = ''                       // SUPPLY ON CLI
-param aadTenantId               = ''                       // SUPPLY ON CLI
+param storageAccountName        = 'replaceme'              // SUPPLY ON CLI - 3-24 lowercase alphanumeric, globally unique
+param avdUsersGroupObjectId     = '00000000-0000-0000-0000-000000000000'  // SUPPLY ON CLI
+param deployerObjectId          = '00000000-0000-0000-0000-000000000000'  // SUPPLY ON CLI
+param aadTenantDomain           = 'contoso.onmicrosoft.com' // SUPPLY ON CLI
+param aadTenantId               = '00000000-0000-0000-0000-000000000000'  // SUPPLY ON CLI
 
 // ---- Tags ------------------------------------------------------------------
 param tags = {
