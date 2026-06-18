@@ -345,6 +345,9 @@ module sessionHost 'br/public:avm/res/compute/virtual-machine:0.22.2' = {
         storageAccountType: 'StandardSSD_LRS'
       }
     }
+    managedIdentities: {
+      systemAssigned: true
+    }
     nicConfigurations: [
       {
         name: '${sessionHostName}-nic-01'
@@ -360,7 +363,6 @@ module sessionHost 'br/public:avm/res/compute/virtual-machine:0.22.2' = {
     ]
     extensionAadJoinConfig: {
       enabled: true
-      settings: {}
     }
     extensionHostPoolRegistration: {
       enabled: true
