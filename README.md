@@ -2,6 +2,8 @@
 
 Personal low-cost Azure Virtual Desktop learning lab — Entra ID-join, FSLogix on Azure Files with Entra Kerberos, one session host, auto-shutdown, ~$25-75/month depending on usage.
 
+> **Verified working** end-to-end on 2026-06-18: bicep apply succeeded, session host showed `Available`, `dsregcmd /status` reported `AzureAdJoined: YES`, and the AVD client successfully connected to the desktop. See [Lessons learned](#lessons-learned) below for what to watch out for.
+
 This repository is meant to be reproducible by anyone with an Azure subscription, a test user, and permission to create resource groups, role assignments, virtual machines, storage accounts, and Azure Virtual Desktop resources.
 
 ## Contents
@@ -21,6 +23,8 @@ This repository is meant to be reproducible by anyone with an Azure subscription
 - [Verifying](#verifying)
 - [Teardown](#teardown)
 - [Cost levers](#cost-levers)
+- [Performance and SKU sizing](#performance-and-sku-sizing)
+- [Lessons learned](#lessons-learned)
 - [References](#references)
 
 ## Architecture
@@ -154,10 +158,12 @@ If you use Windows PowerShell without WSL, make sure Git Bash or another bash-co
 
 The Bicep template deploys all Azure resources but does **not** create role assignments. Those are applied separately by `scripts/grant-rbac.sh` after `main.bicep` succeeds. Splitting them out has two upsides:
 
-1. The deployer only needs `Contributor` to run `main.bicep`; `Microsoft.Authorization/roleAssignments/write` is a separate, narrower step.
+1. The infra deploy only needs `Contributor`; `Microsoft.Authorization/roleAssignments/write` (Owner or User Access Administrator) is required only for `grant-rbac.sh`.
 2. Azure ARM's RBAC propagation cache can take 5-15 minutes to reflect a freshly granted `User Access Administrator` role. Splitting RBAC out means a flaky cache doesn't roll back the whole infra deploy.
 
-`scripts/deploy.sh` calls `grant-rbac.sh` automatically at the end. To run grants by themselves (e.g. if the first attempt errored on RBAC):
+> **Important:** the identity running `grant-rbac.sh` must have `Microsoft.Authorization/roleAssignments/write` at the resource group scope or higher. If you're running as a Service Principal, grant it `User Access Administrator` on the subscription before running the script (see [`Microsoft.Authorization/roleAssignments` permissions](https://learn.microsoft.com/azure/role-based-access-control/role-assignments-cli)).
+
+`scripts/deploy.sh` calls `grant-rbac.sh` automatically at the end. To run grants by themselves (e.g. if the first attempt errored on RBAC, or if the RBAC step needs a different identity than the infra deploy):
 
 ```bash
 export STORAGE_ACCOUNT_NAME=<your-storage-account>
@@ -208,15 +214,42 @@ This lab uses `westcentralus` and Premium Azure Files because it is the only US 
 
 ## Manual post-steps in the Entra portal
 
-After deployment, Azure Files Entra Kerberos creates an app registration named `[Storage Account] <sa>.file.core.windows.net`, where `<sa>` is your storage account name.
+> **All three steps below are mandatory.** Without them, FSLogix profile mount fails with `System error 1327` and the desktop falls back to a local profile or refuses to load.
 
-In the Microsoft Entra portal:
+After deployment, Azure Files Entra Kerberos auto-creates an app registration named `[Storage Account] <sa>.file.core.windows.net`, where `<sa>` is your storage account name. You must apply three changes to that app:
 
-1. Open the app registration manifest.
-2. Add `kdc_enable_cloud_group_sids` to the `tags` array.
-3. Exclude this storage account app from any MFA Conditional Access policy that would block Kerberos ticket retrieval.
+1. **Grant admin consent.**
+   - Open <https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade>
+   - Search for the storage account FQDN
+   - Open the app, go to **API permissions**
+   - Click **Grant admin consent for `<your-tenant>`** and confirm
+   - The three permissions (`openid`, `profile`, `User.Read`) flip to "Granted"
 
-Without these two steps, FSLogix profile mount can fail with `System error 1327`. See Microsoft Learn: [Configure FSLogix profile containers with Microsoft Entra ID](https://learn.microsoft.com/en-us/fslogix/how-to-configure-profile-container-entra-id-hybrid).
+2. **Enable cloud-only group SIDs in the Kerberos ticket.**
+   - Same app, go to **Manifest**
+   - Find the top-level `tags` array (it is usually `[]` by default)
+   - Add the string `"kdc_enable_cloud_group_sids"` to the array
+   - **Save**
+
+3. **Exclude the app from MFA Conditional Access.**
+   - Open <https://entra.microsoft.com/#view/Microsoft_AAD_ConditionalAccess/ConditionalAccessBlade>
+   - For any policy that targets "All cloud apps" with MFA, edit it
+   - **Cloud apps or actions → Exclude** → add the same storage account app
+   - **Save**
+
+Skipping any of the three causes one of these symptoms:
+
+| Symptom | Missing step |
+|---|---|
+| FSLogix profile fails to mount, `System error 1327` | Step 3 (MFA exclusion) |
+| Profile mounts but no group permissions resolve | Step 2 (cloud group SIDs tag) |
+| User can't get Kerberos ticket at all | Step 1 (admin consent) |
+
+For convenience, `scripts/post-deploy-entra-steps.sh` prints these instructions with your storage account name pre-filled.
+
+References:
+- [Enable identity-based authentication for Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-identity-auth-hybrid-identities-enable)
+- [Configure FSLogix profile containers with Microsoft Entra ID](https://learn.microsoft.com/en-us/fslogix/how-to-configure-profile-container-entra-id-hybrid)
 
 ## Connect to the desktop
 
@@ -273,6 +306,33 @@ The storage account's Entra Kerberos app registration is tenant-scoped and can s
 - Keep the OS disk on Standard SSD; this is already the default.
 - If you can tolerate not using per-group RBAC for Azure Files, consider non-Premium Azure Files with default share-level permissions instead of Premium Files. Review the regional and identity support details in the [Azure Files identity-based authentication documentation](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-identity-auth-hybrid-identities-enable).
 - Delete the resource group when you are done with the lab.
+
+## Performance and SKU sizing
+
+`Standard_D2s_v5` (2 vCPU / 8 GiB RAM) is the AVD-supported floor SKU and what this lab uses by default. It is fine for connection-test purposes but feels slow under any real desktop workload (Teams, browser with several tabs, an IDE).
+
+| SKU | vCPU / RAM | $/hr (Win, westcentralus) | Best for |
+|---|---|---|---|
+| `Standard_D2s_v5` *(default)* | 2 / 8 GiB | ~$0.21 | Connection-test, "is this thing on" |
+| `Standard_E2s_v5` | 2 / 16 GiB | ~$0.25 | Single user, browser + Teams |
+| `Standard_D4s_v5` | 4 / 16 GiB | ~$0.41 | Real desktop perf for one user |
+
+Override with `vmSize` in the bicepparam or as a CLI parameter. Bigger numbers cost more — the cost table above assumes the same auto-shutdown profile.
+
+The OS disk is `StandardSSD_LRS` by default to save ~$10/month over Premium SSD. Premium SSD shaves ~30% off cold-start and IO-bound operations; bump if you care.
+
+## Lessons learned
+
+The reproducible path in this repo is the result of working around a number of gotchas that Microsoft's product docs do not call out clearly. Selected:
+
+- **Do not pass `mdmId` to AADLoginForWindows** unless you actively want Intune MDM enrollment. Passing the Intune well-known app ID (`0000000a-0000-0000-c000-000000000000`) on a tenant without Intune licensing causes the extension's `dsregcmd /AzureSecureVMJoin /MdmId ...` to fail with `0x801C0072` (`DSREG_E_USER_HASNO_HOMETENANT`) and roll back the entire AAD join. The AVM VM module strips empty `settings: {}`, so the correct configuration is to omit `settings` entirely.
+- **Region constraint:** in the US public cloud, `westcentralus` is the only region that supports per-group Azure RBAC assignments to cloud-only Entra security groups on Azure Files via Entra Kerberos, and it requires Premium tier. See [Microsoft Learn: enable identity-based authentication](https://learn.microsoft.com/azure/storage/files/storage-files-identity-auth-hybrid-identities-enable). Other US regions force you to use share-level "default" permissions.
+- **AVM's VM module does not enable a system-assigned managed identity by default.** AADLoginForWindows requires it (the extension authenticates the device join through IMDS). The bicep here sets `managedIdentities: { systemAssigned: true }` explicitly.
+- **The three Entra portal post-deploy steps are not optional.** Bicep cannot grant admin consent, edit an app manifest, or modify Conditional Access. Skipping any of them produces silent FSLogix mount failures.
+- **Service principal RBAC propagation lag:** if you grant `User Access Administrator` to a Service Principal *and* run `grant-rbac.sh` immediately, ARM may reject the role assignments for 5-15 minutes with "If access was recently granted, please refresh your credentials." Either wait, or run grants from an interactive user account that already has Owner.
+- **GitHub Pages on a private repo requires Pro/Enterprise.** The architecture diagram link in this README only resolves once the repo is public. The link itself is deterministic — no rewrite needed when you flip visibility.
+
+For a deeper checklist with cited Microsoft Learn URLs and decoded error codes, see [`GOTCHAS.md`](GOTCHAS.md).
 
 ## References
 
