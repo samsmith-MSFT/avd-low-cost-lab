@@ -33,4 +33,4 @@ az deployment sub create \
 
 echo ""
 echo "==== Applying RBAC grants ===="
-"/grant-rbac.sh"
+"$(dirname "$0")/grant-rbac.sh"
