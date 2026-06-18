@@ -12,15 +12,16 @@ This repository is meant to be reproducible by anyone with an Azure subscription
 - [What gets deployed](#what-gets-deployed)
 - [Cost estimate](#cost-estimate)
 - [Prerequisites](#prerequisites)
+- [Manual pre-steps Bicep can't do](#manual-pre-steps-bicep-cant-do)
 - [Run in GitHub Codespaces](#run-in-github-codespaces)
 - [Run locally (Linux / WSL / macOS bash)](#run-locally-linux--wsl--macos-bash)
 - [Run locally (Windows PowerShell)](#run-locally-windows-powershell)
-- [Deployment parameters](#deployment-parameters)
-- [Manual pre-steps Bicep can't do](#manual-pre-steps-bicep-cant-do)
+- [RBAC grants](#rbac-grants)
 - [Manual post-steps in the Entra portal](#manual-post-steps-in-the-entra-portal)
 - [Connect to the desktop](#connect-to-the-desktop)
 - [Wait for the data plane](#wait-for-the-data-plane)
 - [Verifying](#verifying)
+- [Deployment parameters](#deployment-parameters)
 - [Teardown](#teardown)
 - [Cost levers](#cost-levers)
 - [Performance and SKU sizing](#performance-and-sku-sizing)
@@ -94,6 +95,18 @@ az ad group member add \
   --group AVD-Lab-Users \
   --member-id "<test-user-object-id>"
 ```
+
+## Manual pre-steps Bicep can't do
+
+Bicep deploys Azure resources and role assignments, but it does not create your tenant users or groups for this lab.
+
+1. Create the `AVD-Lab-Users` Microsoft Entra security group.
+2. Capture the group object ID for `AVD_USERS_GROUP_OBJECT_ID`.
+3. Add yourself or your test user to the group.
+4. Capture your tenant domain for `AAD_TENANT_DOMAIN` and confirm the tenant ID with `az account show`.
+5. Pick a globally unique storage account name for `STORAGE_ACCOUNT_NAME`.
+
+This lab uses `westcentralus` and Premium Azure Files because it is the only US region that supports per-group RBAC for cloud-only Entra Kerberos on Azure Files at the time this lab was built. See Microsoft Learn: [Enable identity-based authentication for Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-identity-auth-hybrid-identities-enable).
 
 ## Run in GitHub Codespaces
 
@@ -174,44 +187,6 @@ export DEPLOYER_OBJECT_ID=
 
 The script is idempotent; re-running is safe.
 
-## Deployment parameters
-
-| Parameter | Default | Required at runtime? | Notes |
-|---|---|---:|---|
-| `location` | `westcentralus` | No | Azure region for all resources. |
-| `resourceGroupName` | `rg-avd-lab` | No | Resource group created at subscription scope. |
-| `logAnalyticsWorkspaceName` | `law-avd-lab` | No | Log Analytics workspace name. |
-| `nsgName` | `nsg-avd-snet-sh` | No | Network security group name. |
-| `vnetName` | `vnet-avd-lab` | No | Virtual network name. |
-| `hostPoolName` | `hp-avd-lab` | No | AVD host pool name. |
-| `appGroupName` | `ag-avd-lab-desktop` | No | Desktop application group name. |
-| `workspaceName` | `ws-avd-lab` | No | AVD workspace name. |
-| `storageAccountName` | None | Yes | 3-24 lowercase alphanumeric characters, globally unique. Supplied by `STORAGE_ACCOUNT_NAME`. |
-| `fileShareName` | `fslogix-profiles` | No | FSLogix Azure Files share. |
-| `sessionHostName` | `avdsh-01` | No | Windows VM name, 15 characters or fewer. |
-| `vmSize` | `Standard_D8s_v5` | No | Session host VM size. Override at deploy time for cheaper or beefier hosts. |
-| `avdUsersGroupObjectId` | None | Yes | Object ID of the `AVD-Lab-Users` security group. Supplied by `AVD_USERS_GROUP_OBJECT_ID`. |
-| `deployerObjectId` | Current Azure CLI user | No | Used for Azure Files elevated SMB contributor access. Override with `DEPLOYER_OBJECT_ID`. |
-| `aadTenantDomain` | None | Yes | Primary Entra tenant domain. Supplied by `AAD_TENANT_DOMAIN`. |
-| `aadTenantId` | Current Azure CLI tenant | No | Override with `AAD_TENANT_ID`. Use `<your-tenant-id>` in docs and examples. |
-| `adminUsername` | `avdadmin` | No | Local VM admin username. |
-| `adminPassword` | None | Yes | Secure value prompted by `scripts/deploy.sh` unless `ADMIN_PASSWORD` is set. |
-| `shutdownTime` | `1800` | No | Auto-shutdown time in 24-hour HHMM format. |
-| `shutdownTimeZone` | `Central Standard Time` | No | Time zone for the auto-shutdown schedule. |
-| `tags` | Lab defaults | No | Basic workload, environment, and cost tags. |
-
-## Manual pre-steps Bicep can't do
-
-Bicep deploys Azure resources and role assignments, but it does not create your tenant users or groups for this lab.
-
-1. Create the `AVD-Lab-Users` Microsoft Entra security group.
-2. Capture the group object ID for `AVD_USERS_GROUP_OBJECT_ID`.
-3. Add yourself or your test user to the group.
-4. Capture your tenant domain for `AAD_TENANT_DOMAIN` and confirm the tenant ID with `az account show`.
-5. Pick a globally unique storage account name for `STORAGE_ACCOUNT_NAME`.
-
-This lab uses `westcentralus` and Premium Azure Files because it is the only US region that supports per-group RBAC for cloud-only Entra Kerberos on Azure Files at the time this lab was built. See Microsoft Learn: [Enable identity-based authentication for Azure Files](https://learn.microsoft.com/en-us/azure/storage/files/storage-files-identity-auth-hybrid-identities-enable).
-
 ## Manual post-steps in the Entra portal
 
 > **All three steps below are mandatory.** Without them, FSLogix profile mount fails with `System error 1327` and the desktop falls back to a local profile or refuses to load.
@@ -282,6 +257,32 @@ On the session host, inspect FSLogix events at:
 ```text
 Applications and Services Logs > Microsoft > Windows > FSLogix > Operational
 ```
+
+## Deployment parameters
+
+| Parameter | Default | Required at runtime? | Notes |
+|---|---|---:|---|
+| `location` | `westcentralus` | No | Azure region for all resources. |
+| `resourceGroupName` | `rg-avd-lab` | No | Resource group created at subscription scope. |
+| `logAnalyticsWorkspaceName` | `law-avd-lab` | No | Log Analytics workspace name. |
+| `nsgName` | `nsg-avd-snet-sh` | No | Network security group name. |
+| `vnetName` | `vnet-avd-lab` | No | Virtual network name. |
+| `hostPoolName` | `hp-avd-lab` | No | AVD host pool name. |
+| `appGroupName` | `ag-avd-lab-desktop` | No | Desktop application group name. |
+| `workspaceName` | `ws-avd-lab` | No | AVD workspace name. |
+| `storageAccountName` | None | Yes | 3-24 lowercase alphanumeric characters, globally unique. Supplied by `STORAGE_ACCOUNT_NAME`. |
+| `fileShareName` | `fslogix-profiles` | No | FSLogix Azure Files share. |
+| `sessionHostName` | `avdsh-01` | No | Windows VM name, 15 characters or fewer. |
+| `vmSize` | `Standard_D8s_v5` | No | Session host VM size. Override at deploy time for cheaper or beefier hosts. |
+| `avdUsersGroupObjectId` | None | Yes | Object ID of the `AVD-Lab-Users` security group. Supplied by `AVD_USERS_GROUP_OBJECT_ID`. |
+| `deployerObjectId` | Current Azure CLI user | No | Used for Azure Files elevated SMB contributor access. Override with `DEPLOYER_OBJECT_ID`. |
+| `aadTenantDomain` | None | Yes | Primary Entra tenant domain. Supplied by `AAD_TENANT_DOMAIN`. |
+| `aadTenantId` | Current Azure CLI tenant | No | Override with `AAD_TENANT_ID`. Use `<your-tenant-id>` in docs and examples. |
+| `adminUsername` | `avdadmin` | No | Local VM admin username. |
+| `adminPassword` | None | Yes | Secure value prompted by `scripts/deploy.sh` unless `ADMIN_PASSWORD` is set. |
+| `shutdownTime` | `1800` | No | Auto-shutdown time in 24-hour HHMM format. |
+| `shutdownTimeZone` | `Central Standard Time` | No | Time zone for the auto-shutdown schedule. |
+| `tags` | Lab defaults | No | Basic workload, environment, and cost tags. |
 
 ## Teardown
 
