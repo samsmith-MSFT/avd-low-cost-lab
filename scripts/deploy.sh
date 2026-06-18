@@ -31,3 +31,6 @@ az deployment sub create \
     admin'Password'="$ADMIN_PASSWORD" \
   --output table
 
+echo ""
+echo "==== Applying RBAC grants ===="
+"/grant-rbac.sh"

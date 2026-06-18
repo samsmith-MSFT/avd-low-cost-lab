@@ -150,6 +150,24 @@ bash scripts/deploy.sh
 
 If you use Windows PowerShell without WSL, make sure Git Bash or another bash-compatible shell is available on `PATH`.
 
+## RBAC grants
+
+The Bicep template deploys all Azure resources but does **not** create role assignments. Those are applied separately by `scripts/grant-rbac.sh` after `main.bicep` succeeds. Splitting them out has two upsides:
+
+1. The deployer only needs `Contributor` to run `main.bicep`; `Microsoft.Authorization/roleAssignments/write` is a separate, narrower step.
+2. Azure ARM's RBAC propagation cache can take 5-15 minutes to reflect a freshly granted `User Access Administrator` role. Splitting RBAC out means a flaky cache doesn't roll back the whole infra deploy.
+
+`scripts/deploy.sh` calls `grant-rbac.sh` automatically at the end. To run grants by themselves (e.g. if the first attempt errored on RBAC):
+
+```bash
+export STORAGE_ACCOUNT_NAME=<your-storage-account>
+export AVD_USERS_GROUP_OBJECT_ID=<your-group-object-id>
+export DEPLOYER_OBJECT_ID=
+./scripts/grant-rbac.sh
+```
+
+The script is idempotent; re-running is safe.
+
 ## Deployment parameters
 
 | Parameter | Default | Required at runtime? | Notes |

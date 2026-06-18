@@ -223,13 +223,6 @@ module appGroup 'br/public:avm/res/desktop-virtualization/application-group:0.4.
     tags: tags
     applicationGroupType: 'Desktop'
     hostpoolName: hostPool.outputs.name
-    roleAssignments: [
-      {
-        principalId: avdUsersGroupObjectId
-        principalType: 'Group'
-        roleDefinitionIdOrName: roleDesktopVirtualizationUser
-      }
-    ]
     diagnosticSettings: [
       {
         name: 'diag-ag-to-law'
@@ -310,19 +303,7 @@ module storageAccount 'br/public:avm/res/storage/storage-account:0.32.1' = {
         }
       ]
     }
-    // ---- RBAC ----
-    roleAssignments: [
-      {
-        principalId: avdUsersGroupObjectId
-        principalType: 'Group'
-        roleDefinitionIdOrName: roleSmbShareContributor
-      }
-      {
-        principalId: deployerObjectId
-        principalType: 'User'
-        roleDefinitionIdOrName: roleSmbShareElevatedContrib
-      }
-    ]
+    // ---- RBAC (applied separately via scripts/grant-rbac.sh after deploy) ----
     diagnosticSettings: [
       {
         name: 'diag-sa-to-law'
@@ -399,13 +380,6 @@ module sessionHost 'br/public:avm/res/compute/virtual-machine:0.22.2' = {
       dailyRecurrenceTime: shutdownTime
       timeZone: shutdownTimeZone
     }
-    roleAssignments: [
-      {
-        principalId: avdUsersGroupObjectId
-        principalType: 'Group'
-        roleDefinitionIdOrName: roleVirtualMachineUserLogin
-      }
-    ]
   }
 }
 
